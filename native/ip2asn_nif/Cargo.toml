@@ -1,0 +1,13 @@
+[package]
+name = "ip2asn_nif"
+version = "0.1.0"
+authors = []
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+rustler = "0.37.3"
+ip2asn = "0.1.2"
+ip_network = "0.4"

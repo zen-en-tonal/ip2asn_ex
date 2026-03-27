@@ -1,0 +1,4 @@
+[workspace]
+resolver = "2"
+
+members = ["native/ip2asn_nif"]
