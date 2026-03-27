@@ -27,3 +27,4 @@ ip2asn_ex-*.tar
 /target/
 
 /priv/native/
+priv/plts/
