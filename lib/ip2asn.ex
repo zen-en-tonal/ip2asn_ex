@@ -1,43 +1,61 @@
 defmodule Ip2Asn do
   @moduledoc """
-  Documentation for `Ip2Asn`.
+  Supervisor and public API for IP-to-ASN lookups.
+
+  `Ip2Asn` supervises three children:
+    - `Ip2Asn.Store` – holds the in-memory NIF reference to the ASN dataset.
+    - `Ip2Asn.Updater` – downloads the dataset from iptoasn.com on startup and
+      refreshes it every 24 hours.
+    - A `Cachex` cache that memoises successful lookup results.
 
   ## Examples
-      iex> data = "31.13.64.0\t31.13.127.255\t32934\tUS\tFACEBOOK-AS"
-      iex> {:ok, ref} = Ip2Asn.build(data)
-      iex> Ip2Asn.lookup(ref, "31.13.100.100")
-      {:ok, %{
-        organization: "FACEBOOK-AS",
-        network: "31.13.64.0/18",
-        asn: 32934,
-        country_code: "US"
-      }}
-      iex> Ip2Asn.lookup(ref, "8.8.8.8")
-      {:error, :not_found}
+
+      iex> Ip2Asn.Store.update("31.13.64.0\t31.13.127.255\t32934\tUS\tFACEBOOK-AS")
+      :ok
+      iex> {:ok, info} = Ip2Asn.lookup("31.13.100.100")
+      iex> info.asn
+      32934
+
   """
 
-  @type t :: reference()
+  use Supervisor
 
-  @type asn_info :: %{
-          network: binary(),
-          asn: non_neg_integer(),
-          country_code: binary(),
-          organization: binary()
-        }
+  @cache_name :ip2asn_cache
 
-  @spec build(binary()) :: {:ok, t()} | {:error, term()}
-  def build(bin) do
-    case Ip2Asn.Nif.build(bin) do
-      {:ok, ref} -> {:ok, ref}
-      other -> {:error, other}
-    end
+  def start_link(opts \\ []) do
+    Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
-  @spec lookup(t(), binary()) :: {:ok, asn_info()} | {:error, term()}
-  def lookup(ref, ip) do
-    case Ip2Asn.Nif.lookup(ref, ip) do
-      {:ok, info} -> {:ok, info}
-      other -> {:error, other}
+  @impl true
+  def init(_opts) do
+    children = [
+      {Cachex, name: @cache_name},
+      Ip2Asn.Store,
+      Ip2Asn.Updater
+    ]
+
+    Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  @doc """
+  Looks up ASN information for the given IP address.
+
+  Results are cached. Returns `{:error, :not_loaded}` while the dataset is
+  still being fetched on startup.
+  """
+  @spec lookup(binary()) :: {:ok, Ip2Asn.Store.asn_info()} | {:error, term()}
+  def lookup(ip) do
+    case Cachex.get(@cache_name, ip) do
+      {:ok, nil} ->
+        result = Ip2Asn.Store.lookup(ip)
+        if match?({:ok, _}, result), do: Cachex.put(@cache_name, ip, result)
+        result
+
+      {:ok, cached} ->
+        cached
+
+      {:error, _} ->
+        Ip2Asn.Store.lookup(ip)
     end
   end
 end
