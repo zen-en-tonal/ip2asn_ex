@@ -24,7 +24,8 @@ defmodule Ip2Asn.MixProject do
     [
       {:rustler, "~> 0.37.3"},
       {:cachex, "~> 3.6"},
-      {:req, "~> 0.5"}
+      {:req, "~> 0.5"},
+      {:plug, ">= 1.0.0", optional: true}
     ]
   end
 end
